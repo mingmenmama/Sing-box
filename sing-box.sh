@@ -70,7 +70,7 @@ install_singbox() {
         armv7l) arch="armv7" ;;
         armv6l) arch="armv6" ;;
         *) echo -e "${RED}不支持的系统架构。${NC}"; exit 1 ;;
-    esac
+    esac  # <-- 修正后的代码
 
     echo -e "${GREEN}正在下载并安装 Sing-box (版本: ${install_version})...${NC}"
 
