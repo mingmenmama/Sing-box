@@ -8,6 +8,8 @@
 # AnyTLS (Reality) 和 Hysteria2 等多种协议。
 # 增加 AnyTLS (Reality) 协议选项，并明确版本支持。
 # 修复了 read 命令在管道执行时可能导致的无限循环问题。
+# Reality 伪装目标地址已固定，用户无需手动输入。
+# 更新了 Sing-box 安装逻辑，直接从 GitHub Release 下载二进制文件，参考原作者实现。
 # ===============================================================================
 
 # 定义颜色
@@ -18,7 +20,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # 脚本版本
-SCRIPT_VERSION="1.1.0-AnyTLS-Reality-final"
+SCRIPT_VERSION="1.2.0-AnyTLS-Reality-final-yonggekkk-install-logic"
 
 # 默认设置
 DEFAULT_WEB_PORT=80
@@ -27,7 +29,8 @@ DEFAULT_VMESS_PORT=10001
 DEFAULT_VLESS_PORT=10002
 DEFAULT_TROJAN_PORT=10003
 DEFAULT_HYSTERIA2_PORT=10004
-REALITY_DEST="www.google.com:443" # AnyTLS (Reality) 默认伪装目标，这是必需的
+# Reality 伪装目标地址：固定为常用、稳定的 Google 站点
+REALITY_DEST="www.google.com:443"
 
 # 函数：检查命令是否存在
 command_exists() {
@@ -57,7 +60,7 @@ generate_uuid() {
     fi
 }
 
-# 函数：安装 Sing-box
+# 函数：安装 Sing-box (参考原作者直接下载二进制的逻辑)
 install_singbox() {
     local install_version="$1" # 'latest' 或具体版本号
     local arch=""
@@ -85,7 +88,7 @@ install_singbox() {
         tag_name="v${install_version}" # 确保版本号有 'v' 前缀
     fi
 
-    # 替换 sing-box 为 sing-box-$(uname -m)-linux-${arch}
+    # 构建下载 URL
     download_url="https://github.com/SagerNet/sing-box/releases/download/${tag_name}/sing-box-${tag_name}-linux-${arch}.tar.gz"
 
     echo -e "${GREEN}下载链接: ${download_url}${NC}"
@@ -114,13 +117,16 @@ install_singbox() {
 
     # 移动二进制文件到 /usr/local/bin
     # 注意：解压后文件可能在 sing-box-${tag_name}-linux-${arch}/sing-box 路径下
-    find . -type f -name "sing-box" | grep -q "sing-box"
-    if [ $? -eq 0 ]; then
-        # 如果直接解压出来是 sing-box 文件
-        mv "$(find . -type f -name "sing-box")" /usr/local/bin/sing-box
+    # 或者直接是 sing-box
+    if [ -f "sing-box" ]; then # 尝试查找根目录下的 sing-box
+        mv sing-box /usr/local/bin/sing-box
+    elif [ -d "sing-box-${tag_name}-linux-${arch}" ]; then # 如果解压出来是文件夹
+        mv "sing-box-${tag_name}-linux-${arch}/sing-box" /usr/local/bin/sing-box
     else
-        # 如果解压出来是一个文件夹，并且 sing-box 在子文件夹中
-        mv sing-box-${tag_name}-linux-${arch}/sing-box /usr/local/bin/sing-box
+        echo -e "${RED}未找到 Sing-box 二进制文件。解压结构可能与预期不同。${NC}"
+        popd > /dev/null
+        rm -rf /tmp/singbox_install
+        exit 1
     fi
 
     chmod +x /usr/local/bin/sing-box
@@ -157,18 +163,6 @@ EOF
     fi
 }
 
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Sing-box 安装失败，请检查网络或版本号。${NC}"
-        exit 1
-    fi
-    echo -e "${GREEN}Sing-box 安装完成。${NC}"
-
-    # 检查 sing-box 命令是否存在，确保后续操作可以执行
-    if ! command_exists sing-box; then
-        echo -e "${RED}sing-box 命令未找到，请确认 Sing-box 是否成功安装并添加到 PATH。${NC}"
-        exit 1
-    fi
-}
 
 # 函数：配置 SSL 证书 (ACME 方式)
 setup_ssl() {
@@ -177,7 +171,7 @@ setup_ssl() {
     if ! command_exists certbot; then
         echo -e "${YELLOW}Certbot 未安装，正在安装 Certbot...${NC}"
         if command_exists apt; then
-            apt install -y certbot || apt install -y python3-certbot-nginx
+            apt update && apt install -y certbot || apt install -y python3-certbot-nginx
         elif command_exists yum; then
             yum install -y certbot || yum install -y python3-certbot-nginx
         fi
@@ -286,24 +280,20 @@ install_server() {
     fi
 
     if [[ "${PROTOCOL_NAME}" == "anytls_reality_vless" ]]; then
-        echo "" # 添加一个空行
-        read -r -p "请输入 Reality 伪装目标地址 (例如: www.google.com:443，默认: ${REALITY_DEST}): " input_dest </dev/tty
-        if [[ -n "${input_dest}" ]]; then
-            REALITY_DEST="${input_dest}"
-        fi
-        # AnyTLS (Reality) 默认使用 443 端口
-        PORT=443
+        # Reality 伪装目标地址已固定为 REALITY_DEST 变量，用户无需手动输入
+        PORT=443 # AnyTLS (Reality) 默认使用 443 端口
 
         # 生成 Reality 密钥对
         REALITY_KEY_PAIR=$(sing-box generate reality-key)
         REALITY_PRIVATE_KEY=$(echo "${REALITY_KEY_PAIR}" | grep 'private_key' | awk -F': ' '{print $2}' | tr -d '"')
         REALITY_PUBLIC_KEY=$(echo "${REALITY_KEY_PAIR}" | grep 'public_key' | awk -F': ' '{print $2}' | tr -d '"')
-        REALITY_SHORT_ID=$(head /dev/urandom | tr -dc A-F0-9 | head -c 8) # 自动生成短 ID，这里与 README 保持一致
+        REALITY_SHORT_ID=$(head /dev/urandom | tr -dc A-F0-9 | head -c 8) # 自动生成短 ID
 
         echo -e "${GREEN}生成的 Reality 短 ID: ${YELLOW}${REALITY_SHORT_ID}${NC}"
         echo -e "${GREEN}生成的 Reality 私钥: ${YELLOW}${REALITY_PRIVATE_KEY}${NC}"
         echo -e "${GREEN}生成的 Reality 公钥: ${YELLOW}${REALITY_PUBLIC_KEY}${NC}"
         echo -e "${YELLOW}请务必记录以上信息，客户端配置需要用到 Reality 公钥和短 ID！${NC}"
+        echo -e "${YELLOW}Reality 伪装目标已固定为：${REALITY_DEST}${NC}"
 
     elif [[ "${PROTOCOL_NAME}" == "hysteria2" ]]; then
         echo "" # 添加一个空行
@@ -369,13 +359,13 @@ install_server() {
       ],
       "tls": {
         "enabled": true,
-        "server_name": "${REALITY_DEST%:*}",
+        "server_name": "${REALITY_DEST%:*}", # 这是 Sing-box 要求 Reality 在 TLS 握手中使用的 SNI
         "reality": {
           "enabled": true,
           "handshake": {
-            "server": "${REALITY_DEST%:*}",
-            "server_port": ${REALITY_DEST##*:},
-            "sni": "${REALITY_DEST%:*}",
+            "server": "${REALITY_DEST%:*}", # Reality 伪装目标地址 (Host)
+            "server_port": ${REALITY_DEST##*:}, # Reality 伪装目标端口
+            "sni": "${REALITY_DEST%:*}", # Reality 握手期间使用的 SNI，通常与 server 相同
             "fingerprint": "chrome"
           },
           "private_key": "${REALITY_PRIVATE_KEY}",
@@ -408,8 +398,8 @@ EOF
         echo -e "端口: ${YELLOW}${PORT}${NC}"
         echo -e "UUID: ${YELLOW}${UUID}${NC}"
         echo -e "传输协议: ${YELLOW}Reality + VLESS${NC}"
-        echo -e "伪装目标 (Server Name): ${YELLOW}${REALITY_DEST%:*} ${NC}"
-        echo -e "伪装目标端口 (Server Port): ${YELLOW}${REALITY_DEST##*:}${NC}"
+        echo -e "伪装目标 (Server Name): ${YELLOW}${REALITY_DEST%:*} ${NC}" # 客户端配置也需要这个伪装目标
+        echo -e "伪装目标端口 (Server Port): ${YELLOW}${REALITY_DEST##*:}${NC}" # 客户端配置也需要这个伪装目标端口
         echo -e "公钥 (Public Key): ${YELLOW}${REALITY_PUBLIC_KEY}${NC}"
         echo -e "短 ID (Short ID): ${YELLOW}${REALITY_SHORT_ID}${NC}"
         echo -e "流控 (Flow): ${YELLOW}xtls-rprx-vision${NC}"
@@ -559,6 +549,16 @@ EOF
         "key_path": "/etc/sing-box/privkey.pem",
         "strict_sni": true
       }
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    },
+    {
+      "type": "block",
+      "tag": "block"
     }
   ]
 }
