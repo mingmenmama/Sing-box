@@ -59,14 +59,103 @@ generate_uuid() {
 
 # 函数：安装 Sing-box
 install_singbox() {
-    local version_to_install="$1"
-    echo -e "${GREEN}正在下载并安装 Sing-box (版本: ${version_to_install})...${NC}"
-    # 更新为 Sing-box 官方推荐的通用安装脚本 URL
-    if [[ -z "$version_to_install" || "$version_to_install" == "latest" ]]; then
-        bash <(curl -sL https://sing-box.app/install.sh)
+    local install_version="$1" # 'latest' 或具体版本号
+    local arch=""
+    case $(uname -m) in
+        x86_64) arch="amd64" ;;
+        aarch64) arch="arm64" ;;
+        armv7l) arch="armv7" ;;
+        armv6l) arch="armv6" ;;
+        *) echo -e "${RED}不支持的系统架构。${NC}"; exit 1 ;;
+    esac
+
+    echo -e "${GREEN}正在下载并安装 Sing-box (版本: ${install_version})...${NC}"
+
+    local download_url=""
+    local tag_name=""
+
+    if [[ "$install_version" == "latest" ]]; then
+        # 获取最新稳定版
+        tag_name=$(curl -sL "https://api.github.com/repos/SagerNet/sing-box/releases/latest" | jq -r '.tag_name')
+        if [[ "$tag_name" == "null" || -z "$tag_name" ]]; then
+            echo -e "${RED}无法获取 Sing-box 最新版本号，请检查网络或 GitHub API 访问。${NC}"
+            exit 1
+        fi
     else
-        bash <(curl -sL https://sing-box.app/install.sh) -s -- --version "$version_to_install"
+        tag_name="v${install_version}" # 确保版本号有 'v' 前缀
     fi
+
+    # 替换 sing-box 为 sing-box-$(uname -m)-linux-${arch}
+    download_url="https://github.com/SagerNet/sing-box/releases/download/${tag_name}/sing-box-${tag_name}-linux-${arch}.tar.gz"
+
+    echo -e "${GREEN}下载链接: ${download_url}${NC}"
+
+    # 创建临时目录
+    mkdir -p /tmp/singbox_install
+    pushd /tmp/singbox_install > /dev/null
+
+    # 下载文件
+    wget -c "$download_url" -O sing-box.tar.gz
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}下载 Sing-box 失败，请检查网络或版本号是否存在。${NC}"
+        popd > /dev/null
+        rm -rf /tmp/singbox_install
+        exit 1
+    fi
+
+    # 解压
+    tar -xzf sing-box.tar.gz
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}解压 Sing-box 失败。${NC}"
+        popd > /dev/null
+        rm -rf /tmp/singbox_install
+        exit 1
+    fi
+
+    # 移动二进制文件到 /usr/local/bin
+    # 注意：解压后文件可能在 sing-box-${tag_name}-linux-${arch}/sing-box 路径下
+    find . -type f -name "sing-box" | grep -q "sing-box"
+    if [ $? -eq 0 ]; then
+        # 如果直接解压出来是 sing-box 文件
+        mv "$(find . -type f -name "sing-box")" /usr/local/bin/sing-box
+    else
+        # 如果解压出来是一个文件夹，并且 sing-box 在子文件夹中
+        mv sing-box-${tag_name}-linux-${arch}/sing-box /usr/local/bin/sing-box
+    fi
+
+    chmod +x /usr/local/bin/sing-box
+    popd > /dev/null
+    rm -rf /tmp/singbox_install
+
+    # 配置 systemd 服务 (确保服务文件是最新的)
+    cat > /etc/systemd/system/sing-box.service << EOF
+[Unit]
+Description=Sing-box Service
+Documentation=https://sing-box.sagernet.org
+After=network.target nss-lookup.target systemd-resolved.service
+
+[Service]
+User=root
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
+ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
+ExecStop=/bin/kill -s TSTP \$MAINPID
+Restart=on-failure
+RestartSec=10
+LimitNOFILE=infinity
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload
+    echo -e "${GREEN}Sing-box 安装和 systemd 服务配置完成。${NC}"
+
+    if ! command_exists sing-box; then
+        echo -e "${RED}sing-box 命令未找到，请确认 Sing-box 是否成功安装并添加到 PATH。${NC}"
+        exit 1
+    fi
+}
 
     if [ $? -ne 0 ]; then
         echo -e "${RED}Sing-box 安装失败，请检查网络或版本号。${NC}"
