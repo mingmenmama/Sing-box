@@ -145,7 +145,11 @@ main_menu() {
         3) update_server;;
         4) show_config;;
         0) echo -e "${YELLOW}退出脚本。${NC}"; exit 0;;
-        *) echo -e "${RED}无效的选择，请重新输入。${NC}"; sleep 1; main_menu;;
+        *)
+            echo -e "${RED}无效的选择 '${action_choice}'，请输入 0 到 4 之间的数字。${NC}"
+            sleep 1
+            main_menu
+            ;;
     esac
 }
 
