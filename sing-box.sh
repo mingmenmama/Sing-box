@@ -1,3 +1,5 @@
+#!/bin/bash
+export LANG=en_US.UTF-8
 # 1. 替换 `inssb` 函数
 # 找到原始 `inssb` 函数，替换为以下内容
 inssb(){
