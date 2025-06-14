@@ -1,12 +1,13 @@
 #!/bin/bash
 
 # ===============================================================================
-# Sing-box-yg 精装桶一键四协议共存脚本 (AnyTLS/Reality 集成版)
+# Sing-box 一键多协议共存脚本 (AnyTLS/Reality 集成版)
 # 基于 yonggekkk/sing-box-yg 修改
 # -------------------------------------------------------------------------------
 # 本脚本旨在帮助用户快速部署 Sing-box 服务端，支持 Vmess、Vless、Trojan、
 # AnyTLS (Reality) 和 Hysteria2 等多种协议。
 # 增加 AnyTLS (Reality) 协议选项，并明确版本支持。
+# 修复了 read 命令在管道执行时可能导致的无限循环问题。
 # ===============================================================================
 
 # 定义颜色
@@ -17,7 +18,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # 脚本版本
-SCRIPT_VERSION="1.1.0-AnyTLS-Reality"
+SCRIPT_VERSION="1.1.0-AnyTLS-Reality-final"
 
 # 默认设置
 DEFAULT_WEB_PORT=80
@@ -26,7 +27,7 @@ DEFAULT_VMESS_PORT=10001
 DEFAULT_VLESS_PORT=10002
 DEFAULT_TROJAN_PORT=10003
 DEFAULT_HYSTERIA2_PORT=10004
-REALITY_DEST="www.google.com:443" # AnyTLS (Reality) 默认伪装目标
+REALITY_DEST="www.google.com:443" # AnyTLS (Reality) 默认伪装目标，这是必需的
 
 # 函数：检查命令是否存在
 command_exists() {
@@ -37,11 +38,11 @@ command_exists() {
 install_dependencies() {
     echo -e "${GREEN}正在安装必要的依赖...${NC}"
     if command_exists apt; then
-        apt update && apt install -y curl wget git qrencode
+        apt update && apt install -y curl wget git qrencode uuid-runtime jq
     elif command_exists yum; then
-        yum install -y curl wget git qrencode
+        yum install -y curl wget git qrencode util-linux-ng jq
     else
-        echo -e "${RED}不支持的操作系统，请手动安装 curl, wget, git, qrencode。${NC}"
+        echo -e "${RED}不支持的操作系统，请手动安装 curl, wget, git, qrencode, jq 和 uuidgen。${NC}"
         exit 1
     fi
     echo -e "${GREEN}依赖安装完成。${NC}"
@@ -63,8 +64,6 @@ install_singbox() {
     if [[ -z "$version_to_install" || "$version_to_install" == "latest" ]]; then
         bash <(curl -sL https://raw.githubusercontent.com/nekobox-org/sing-box/main/install.sh)
     else
-        # 安装特定版本，这里需要根据 sing-box 官方安装脚本的参数来调整
-        # 通常是 `install.sh -v <version>`
         bash <(curl -sL https://raw.githubusercontent.com/nekobox-org/sing-box/main/install.sh) -v "$version_to_install"
     fi
 
@@ -127,7 +126,7 @@ generate_password() {
 main_menu() {
     clear
     echo -e "${BLUE}====================================================${NC}"
-    echo -e "${BLUE}  Sing-box-yg 精装桶一键多协议共存脚本 v${SCRIPT_VERSION} ${NC}"
+    echo -e "${BLUE}  Sing-box 一键多协议共存脚本 v${SCRIPT_VERSION} ${NC}"
     echo -e "${BLUE}====================================================${NC}"
     echo -e "${GREEN}1. 安装 Sing-box 服务端${NC}"
     echo -e "${GREEN}2. 卸载 Sing-box 服务端${NC}"
@@ -162,10 +161,11 @@ install_server() {
     echo -e "1. Vmess (TLS)"
     echo -e "2. Vless (TLS)"
     echo -e "3. Trojan (TLS)"
-    echo -e "4. AnyTLS (Reality - 推荐，无需域名和证书)" # AnyTLS (Reality)
+    echo -e "4. AnyTLS (Reality - 推荐，无需域名和证书)"
     echo -e "5. Hysteria2"
     echo -e "${BLUE}--------------------------------------------------------${NC}"
-    read -p "请输入数字选择协议（1-5）：" protocol_choice
+    echo "" # 添加一个空行
+    read -r -p "请输入数字选择协议（1-5）：" protocol_choice </dev/tty
 
     case ${protocol_choice} in
         1) PROTOCOL_NAME="vmess";;
@@ -180,12 +180,14 @@ install_server() {
     PASSWORD=$(generate_password)
 
     if [[ "${PROTOCOL_NAME}" != "anytls_reality_vless" && "${PROTOCOL_NAME}" != "hysteria2" ]]; then
-        read -p "请输入你的域名 (例如: example.com): " DOMAIN
+        echo "" # 添加一个空行
+        read -r -p "请输入你的域名 (例如: example.com): " DOMAIN </dev/tty
         if [[ -z "$DOMAIN" ]]; then
             echo -e "${RED}域名不能为空，请重新运行脚本。${NC}"
             exit 1
         fi
-        read -p "请输入你的邮箱地址 (用于 Let's Encrypt 证书，例如: your@email.com): " EMAIL
+        echo "" # 添加一个空行
+        read -r -p "请输入你的邮箱地址 (用于 Let's Encrypt 证书，例如: your@email.com): " EMAIL </dev/tty
         if [[ -z "$EMAIL" ]]; then
             echo -e "${RED}邮箱地址不能为空，请重新运行脚本。${NC}"
             exit 1
@@ -194,7 +196,8 @@ install_server() {
     fi
 
     if [[ "${PROTOCOL_NAME}" == "anytls_reality_vless" ]]; then
-        read -p "请输入 Reality 伪装目标地址 (例如: www.google.com:443，默认: ${REALITY_DEST}): " input_dest
+        echo "" # 添加一个空行
+        read -r -p "请输入 Reality 伪装目标地址 (例如: www.google.com:443，默认: ${REALITY_DEST}): " input_dest </dev/tty
         if [[ -n "${input_dest}" ]]; then
             REALITY_DEST="${input_dest}"
         fi
@@ -205,6 +208,7 @@ install_server() {
         REALITY_KEY_PAIR=$(sing-box generate reality-key)
         REALITY_PRIVATE_KEY=$(echo "${REALITY_KEY_PAIR}" | grep 'private_key' | awk -F': ' '{print $2}' | tr -d '"')
         REALITY_PUBLIC_KEY=$(echo "${REALITY_KEY_PAIR}" | grep 'public_key' | awk -F': ' '{print $2}' | tr -d '"')
+        REALITY_SHORT_ID=$(head /dev/urandom | tr -dc A-F0-9 | head -c 8) # 自动生成短 ID，这里与 README 保持一致
 
         echo -e "${GREEN}生成的 Reality 短 ID: ${YELLOW}${REALITY_SHORT_ID}${NC}"
         echo -e "${GREEN}生成的 Reality 私钥: ${YELLOW}${REALITY_PRIVATE_KEY}${NC}"
@@ -212,14 +216,16 @@ install_server() {
         echo -e "${YELLOW}请务必记录以上信息，客户端配置需要用到 Reality 公钥和短 ID！${NC}"
 
     elif [[ "${PROTOCOL_NAME}" == "hysteria2" ]]; then
-        read -p "请输入 Hysteria2 监听端口 (默认: ${DEFAULT_HYSTERIA2_PORT}): " input_port
+        echo "" # 添加一个空行
+        read -r -p "请输入 Hysteria2 监听端口 (默认: ${DEFAULT_HYSTERIA2_PORT}): " input_port </dev/tty
         PORT=${input_port:-${DEFAULT_HYSTERIA2_PORT}}
         echo -e "${YELLOW}Hysteria2 协议需要你手动生成或提供 SSL 证书。请确保 /etc/sing-box/fullchain.pem 和 /etc/sing-box/privkey.pem 存在。${NC}"
         echo -e "${YELLOW}如果没有，请手动准备证书文件。${NC}"
         # 对于 Hysteria2，这里不自动申请证书，需要用户手动放置或自行处理
     else
         # 其他 TLS 协议的端口选择
-        read -p "请输入 TLS 监听端口 (默认: ${DEFAULT_TLS_PORT}): " input_port
+        echo "" # 添加一个空行
+        read -r -p "请输入 TLS 监听端口 (默认: ${DEFAULT_TLS_PORT}): " input_port </dev/tty
         PORT=${input_port:-${DEFAULT_TLS_PORT}}
     fi
 
@@ -228,11 +234,13 @@ install_server() {
     echo -e "1. 最新稳定版 (强烈推荐，${GREEN}支持 AnyTLS/Reality${NC} 等新协议)"
     echo -e "2. 特定版本 (如果你需要旧版本，可能不支持 AnyTLS/Reality)"
     echo -e "${BLUE}--------------------------------------------------------${NC}"
-    read -p "请输入数字选择版本（1-2）：" version_choice
+    echo "" # 添加一个空行
+    read -r -p "请输入数字选择版本（1-2）：" version_choice </dev/tty
 
     SINGBOX_VERSION="latest"
     if [[ "${version_choice}" == "2" ]]; then
-        read -p "请输入要安装的 Sing-box 版本号 (例如: 1.8.0): " custom_version
+        echo "" # 添加一个空行
+        read -r -p "请输入要安装的 Sing-box 版本号 (例如: 1.8.0): " custom_version </dev/tty
         if [[ -n "$custom_version" ]]; then
             SINGBOX_VERSION="$custom_version"
         else
@@ -244,6 +252,7 @@ install_server() {
 
     echo -e "${GREEN}正在生成 Sing-box 配置文件...${NC}"
     mkdir -p /etc/sing-box
+    mkdir -p /var/log/sing-box # 确保日志目录存在
 
     if [[ "${PROTOCOL_NAME}" == "anytls_reality_vless" ]]; then
         cat > /etc/sing-box/config.json << EOF
@@ -461,16 +470,6 @@ EOF
         "strict_sni": true
       }
     }
-  ],
-  "outbounds": [
-    {
-      "type": "direct",
-      "tag": "direct"
-    },
-    {
-      "type": "block",
-      "tag": "block"
-    }
   ]
 }
 EOF
@@ -541,7 +540,7 @@ EOF
 
     echo -e "${GREEN}Sing-box 服务端安装完成！${NC}"
     echo -e "${YELLOW}请确保你的 VPS 防火墙和云服务商安全组已开放相关端口。${NC}"
-    read -p "按任意键返回主菜单..."
+    read -p "按任意键返回主菜单..." </dev/tty
     main_menu
 }
 
@@ -558,7 +557,7 @@ uninstall_server() {
     systemctl reset-failed
 
     echo -e "${GREEN}Sing-box 已完全卸载。${NC}"
-    read -p "按任意键返回主菜单..."
+    read -p "按任意键返回主菜单..." </dev/tty
     main_menu
 }
 
@@ -568,7 +567,7 @@ update_server() {
     install_singbox "latest" # 更新到最新版本
     systemctl restart sing-box
     echo -e "${GREEN}Sing-box 服务已更新并重启。${NC}"
-    read -p "按任意键返回主菜单..."
+    read -p "按任意键返回主菜单..." </dev/tty
     main_menu
 }
 
@@ -581,14 +580,15 @@ show_config() {
 
     if [ -f "/etc/sing-box/config.json" ]; then
         echo -e "${GREEN}当前 Sing-box 配置：${NC}"
-        cat /etc/sing-box/config.json | jq . || echo -e "${YELLOW}请安装 'jq' 以美化 JSON 输出 (apt install jq / yum install jq)${NC}"
+        # 尝试使用 jq 美化输出，如果 jq 不存在，则直接 cat
+        jq . /etc/sing-box/config.json 2>/dev/null || cat /etc/sing-box/config.json
         echo -e "${BLUE}--------------------------------------------------------${NC}"
         echo -e "${YELLOW}请注意：这里只显示服务端配置，客户端配置信息请参考安装时的输出。${NC}"
     else
         echo -e "${YELLOW}未找到 Sing-box 配置文件 /etc/sing-box/config.json。${NC}"
     fi
     echo -e "${BLUE}--------------------------------------------------------${NC}"
-    read -p "按任意键返回主菜单..."
+    read -p "按任意键返回主菜单..." </dev/tty
     main_menu
 }
 
