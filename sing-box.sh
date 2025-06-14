@@ -1,686 +1,318 @@
 #!/bin/bash
 
-# ===============================================================================
-# Sing-box 一键多协议共存脚本 (AnyTLS/Reality 集成版)
-# 基于 yonggekkk/sing-box-yg 修改
-# -------------------------------------------------------------------------------
-# 本脚本旨在帮助用户快速部署 Sing-box 服务端，支持 Vmess、Vless、Trojan、
-# AnyTLS (Reality) 和 Hysteria2 等多种协议。
-# 增加 AnyTLS (Reality) 协议选项，并明确版本支持。
-# 修复了 read 命令在管道执行时可能导致的无限循环问题。
-# Reality 伪装目标地址已固定，用户无需手动输入。
-# 更新了 Sing-box 安装逻辑，直接从 GitHub Release 下载二进制文件，参考原作者实现。
-# ===============================================================================
+#====================================================
+#	System Request:Linux
+#	Author:	yonggekkk
+#	Dscription:sing-box-yg
+#	Version: 1.0.0
+#	email:yonggekkk@gmail.com
+#	Official document: https://sing-box.sagernet.org/
+#====================================================
 
-# 定义颜色
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+red='\033[0;31m'
+green='\033[0;32m'
+yellow='\033[0;33m'
+plain='\033[0m'
 
-# 脚本版本
-SCRIPT_VERSION="1.2.0-AnyTLS-Reality-final-yonggekkk-install-logic"
+# Add the following functions for version comparison
+version_lt() { test "$(echo "$1 $2" | tr " " "\n" | sort -rV | head -n 1)" != "$1"; }
+version_le() { test "$(echo "$1 $2" | tr " " "\n" | sort -rV | head -n 1)" == "$2"; }
+version_gt() { test "$(echo "$1 $2" | tr " " "\n" | sort -rV | head -n 1)" == "$1"; }
+version_ge() { test "$(echo "$1 $2" | tr " " "\n" | sort -rV | head -n 1)" != "$2"; }
 
-# 默认设置
-DEFAULT_WEB_PORT=80
-DEFAULT_TLS_PORT=443
-DEFAULT_VMESS_PORT=10001
-DEFAULT_VLESS_PORT=10002
-DEFAULT_TROJAN_PORT=10003
-DEFAULT_HYSTERIA2_PORT=10004
-# Reality 伪装目标地址：固定为常用、稳定的 Google 站点
-REALITY_DEST="en.people.cn:443"
 
-# 函数：检查命令是否存在
-command_exists() {
-    command -v "$@" > /dev/null 2>&1
-}
-
-# 函数：安装依赖
-install_dependencies() {
-    echo -e "${GREEN}正在安装必要的依赖...${NC}"
-    if command_exists apt; then
-        apt update && apt install -y curl wget git qrencode uuid-runtime jq
-    elif command_exists yum; then
-        yum install -y curl wget git qrencode util-linux-ng jq
-    else
-        echo -e "${RED}不支持的操作系统，请手动安装 curl, wget, git, qrencode, jq 和 uuidgen。${NC}"
+function check_root() {
+    if [[ $EUID -ne 0 ]]; then
+        echo -e "${red}错误：${plain} 本脚本必须以 root 用户身份运行！\n"
         exit 1
     fi
-    echo -e "${GREEN}依赖安装完成。${NC}"
 }
 
-# 函数：生成 UUID
-generate_uuid() {
-    if command_exists uuidgen; then
-        uuidgen
-    else
-        cat /proc/sys/kernel/random/uuid
-    fi
-}
-
-# 函数：安装 Sing-box (参考原作者直接下载二进制的逻辑)
-install_singbox() {
-    local install_version="$1" # 'latest' 或具体版本号
-    local arch=""
-    case $(uname -m) in
-        x86_64) arch="amd64" ;;
-        aarch64) arch="arm64" ;;
-        armv7l) arch="armv7" ;;
-        armv6l) arch="armv6" ;;
-        *) echo -e "${RED}不支持的系统架构。${NC}"; exit 1 ;;
-    esac  # <-- 修正后的代码
-
-    echo -e "${GREEN}正在下载并安装 Sing-box (版本: ${install_version})...${NC}"
-
-    local download_url=""
-    local tag_name=""
-
-    if [[ "$install_version" == "latest" ]]; then
-        # 获取最新稳定版
-        tag_name=$(curl -sL "https://api.github.com/repos/SagerNet/sing-box/releases/latest" | jq -r '.tag_name')
-        if [[ "$tag_name" == "null" || -z "$tag_name" ]]; then
-            echo -e "${RED}无法获取 Sing-box 最新版本号，请检查网络或 GitHub API 访问。${NC}"
+function check_operating_system() {
+    # Check if the operating system is Ubuntu or Debian, and if it's 64-bit
+    if [[ -f /etc/os-release ]]; then
+        . /etc/os-release
+        if [[ "$ID" == "ubuntu" || "$ID" == "debian" ]]; then
+            if [[ $(uname -m) != "x86_64" ]]; then
+                echo -e "${red}错误：${plain} 本脚本只支持 64 位的 Ubuntu 或 Debian 系统！\n"
+                exit 1
+            fi
+        else
+            echo -e "${red}错误：${plain} 本脚本只支持 Ubuntu 或 Debian 系统！\n"
             exit 1
         fi
     else
-        tag_name="v${install_version}" # 确保版本号有 'v' 前缀
-    fi
-
-    # 构建下载 URL
-    download_url="https://github.com/SagerNet/sing-box/releases/download/${tag_name}/sing-box-${tag_name}-linux-${arch}.tar.gz"
-
-    echo -e "${GREEN}下载链接: ${download_url}${NC}"
-
-    # 创建临时目录
-    mkdir -p /tmp/singbox_install
-    pushd /tmp/singbox_install > /dev/null
-
-    # 下载文件
-    wget -c "$download_url" -O sing-box.tar.gz
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}下载 Sing-box 失败，请检查网络或版本号是否存在。${NC}"
-        popd > /dev/null
-        rm -rf /tmp/singbox_install
+        echo -e "${red}错误：${plain} 无法检测操作系统！\n"
         exit 1
     fi
+}
 
-    # 解压
-    tar -xzf sing-box.tar.gz
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}解压 Sing-box 失败。${NC}"
-        popd > /dev/null
-        rm -rf /tmp/singbox_install
+function get_latest_singbox_version() {
+    local version_list=$(curl -s "https://api.github.com/repos/SagerNet/sing-box/releases?per_page=100")
+    
+    # 提取最新的非预发布版本
+    latest_stable_version=$(echo "$version_list" | grep '"tag_name":' | grep -v 'beta' | grep -v 'rc' | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')
+    latest_stable_version_without_v=$(echo "$latest_stable_version" | sed 's/^v//')
+
+    # 提取最新的预发布版本
+    latest_pre_release_version=$(echo "$version_list" | grep '"tag_name":' | grep -E 'beta|rc' | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')
+    latest_pre_release_version_without_v=$(echo "$latest_pre_release_version" | sed 's/^v//')
+
+    if [ -z "$latest_stable_version_without_v" ] && [ -z "$latest_pre_release_version_without_v" ]; then
+        echo -e "${red}错误：${plain} 无法获取最新的 sing-box 版本！\n"
         exit 1
     fi
+}
 
-    # 移动二进制文件到 /usr/local/bin
-    # 注意：解压后文件可能在 sing-box-${tag_name}-linux-${arch}/sing-box 路径下
-    # 或者直接是 sing-box
-    if [ -f "sing-box" ]; then # 尝试查找根目录下的 sing-box
-        mv sing-box /usr/local/bin/sing-box
-    elif [ -d "sing-box-${tag_name}-linux-${arch}" ]; then # 如果解压出来是文件夹
-        mv "sing-box-${tag_name}-linux-${arch}/sing-box" /usr/local/bin/sing-box
+function install_singbox() {
+    echo -e "${green}开始安装 sing-box...${plain}"
+
+    get_latest_singbox_version
+
+    echo -e "${yellow}请选择要安装的 sing-box 内核版本：${plain}"
+    if [ -n "$latest_stable_version_without_v" ]; then
+        echo "1. 稳定版 (${latest_stable_version_without_v})"
+    fi
+    if [ -n "$latest_pre_release_version_without_v" ]; then
+        echo "2. 最新测试版 (${latest_pre_release_version_without_v})"
+    fi
+
+    local version_choice
+    read -p "请输入你的选择 [1-2]:" version_choice
+
+    if [ "$version_choice" == "1" ] && [ -n "$latest_stable_version_without_v" ]; then
+        singbox_version_chosen="$latest_stable_version_without_v"
+    elif [ "$version_choice" == "2" ] && [ -n "$latest_pre_release_version_without_v" ]; then
+        singbox_version_chosen="$latest_pre_release_version_without_v"
     else
-        echo -e "${RED}未找到 Sing-box 二进制文件。解压结构可能与预期不同。${NC}"
-        popd > /dev/null
-        rm -rf /tmp/singbox_install
+        echo -e "${red}无效的选择，请重新输入。${plain}"
         exit 1
     fi
 
-    chmod +x /usr/local/bin/sing-box
-    popd > /dev/null
-    rm -rf /tmp/singbox_install
+    echo -e "${yellow}你选择的 sing-box 版本是：${singbox_version_chosen}${plain}"
 
-    # 配置 systemd 服务 (确保服务文件是最新的)
-    cat > /etc/systemd/system/sing-box.service << EOF
+    local download_url="https://github.com/SagerNet/sing-box/releases/download/v${singbox_version_chosen}/sing-box-${singbox_version_chosen}-linux-amd64.tar.gz"
+    echo -e "${green}正在下载 sing-box ${singbox_version_chosen}...${plain}"
+
+    wget -O /tmp/sing-box.tar.gz "$download_url"
+    if [ $? -ne 0 ]; then
+        echo -e "${red}错误：${plain} 下载 sing-box 失败！请检查网络连接或 URL。\n"
+        exit 1
+    fi
+
+    tar -xzf /tmp/sing-box.tar.gz -C /tmp/
+    if [ $? -ne 0 ]; then
+        echo -e "${red}错误：${plain} 解压 sing-box 失败！\n"
+        exit 1
+    fi
+
+    mv /tmp/sing-box-${singbox_version_chosen}-linux-amd64/sing-box /usr/local/bin/sing-box
+    chmod +x /usr/local/bin/sing-box
+
+    # Create systemd service file
+    cat > /etc/systemd/system/sing-box.service <<EOF
 [Unit]
-Description=Sing-box Service
-Documentation=https://sing-box.sagernet.org
+Description=sing-box Service
+Documentation=https://sing-box.sagernet.org/
 After=network.target nss-lookup.target systemd-resolved.service
 
 [Service]
 User=root
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
 AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE
-ExecStart=/usr/local/bin/sing-box run -c /etc/sing-box/config.json
-ExecStop=/bin/kill -s TSTP \$MAINPID
-Restart=on-failure
-RestartSec=10
+ExecStart=/usr/local/bin/sing-box run -C /etc/sing-box
 LimitNOFILE=infinity
+ExecReload=/bin/kill -HUP \$MAINPID
+Restart=on-failure
+RestartPreventExitStatus=23
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-    systemctl daemon-reload
-    echo -e "${GREEN}Sing-box 安装和 systemd 服务配置完成。${NC}"
-
-    if ! command_exists sing-box; then
-        echo -e "${RED}sing-box 命令未找到，请确认 Sing-box 是否成功安装并添加到 PATH。${NC}"
-        exit 1
-    fi
-}
-
-
-# 函数：配置 SSL 证书 (ACME 方式)
-setup_ssl() {
-    echo -e "${BLUE}开始配置 SSL 证书...${NC}"
-
-    if ! command_exists certbot; then
-        echo -e "${YELLOW}Certbot 未安装，正在安装 Certbot...${NC}"
-        if command_exists apt; then
-            apt update && apt install -y certbot || apt install -y python3-certbot-nginx
-        elif command_exists yum; then
-            yum install -y certbot || yum install -y python3-certbot-nginx
-        fi
-        if ! command_exists certbot; then
-            echo -e "${RED}Certbot 安装失败，请手动安装或检查系统。${NC}"
-            exit 1
-        fi
-    fi
-
-    # 停止占用 80/443 端口的服务，例如 Nginx, Apache
-    if command_exists nginx; then systemctl stop nginx; fi
-    if command_exists apache2; then systemctl stop apache2; fi
-    if command_exists httpd; then systemctl stop httpd; fi
-
-    certbot certonly --standalone --agree-tos --email "$EMAIL" -d "$DOMAIN"
-
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}SSL 证书申请失败，请检查域名解析和端口是否开放。${NC}"
-        exit 1
-    fi
-
-    # 创建证书存放目录
     mkdir -p /etc/sing-box
-    ln -sf "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" "/etc/sing-box/fullchain.pem"
-    ln -sf "/etc/letsencrypt/live/$DOMAIN/privkey.pem" "/etc/sing-box/privkey.pem"
 
-    echo -e "${GREEN}SSL 证书配置完成。${NC}"
-}
+    systemctl daemon-reload
+    systemctl enable sing-box
+    echo -e "${green}sing-box ${singbox_version_chosen} 安装成功！${plain}"
 
-# 函数：生成随机密码
-generate_password() {
-    head /dev/urandom | tr -dc A-Za-z0-9_ | head -c 16
-}
+    # Check if the chosen version is 1.12.0 or higher to enable anytls
+    is_latest_beta_kernel=false
+    # Remove 'v' prefix for comparison if it exists, and handle potential patch/rc versions
+    # For robust comparison, we ensure that both are in a comparable format
+    chosen_version_numeric=$(echo "$singbox_version_chosen" | sed 's/^v//' | cut -d'-' -f1) # Remove 'v' and any '-rc' suffixes
+    
+    if version_ge "$chosen_version_numeric" "1.12.0"; then
+        is_latest_beta_kernel=true
+    fi
+    
+    echo -e "${yellow}请选择你想要使用的协议：${plain}"
+    echo "1. vless"
+    echo "2. tuic"
+    echo "3. hysteria2"
+    echo "4. wireguard"
+    echo "5. ss"
+    echo "6. trojan"
+    echo "7. naive"
+    echo "8. ssh"
+    echo "9. shadowsocks-plugin"
 
-# 函数：主菜单
-main_menu() {
-    clear
-    echo -e "${BLUE}====================================================${NC}"
-    echo -e "${BLUE}  Sing-box 一键多协议共存脚本 v${SCRIPT_VERSION} ${NC}"
-    echo -e "${BLUE}====================================================${NC}"
-    echo -e "${GREEN}1. 安装 Sing-box 服务端${NC}"
-    echo -e "${GREEN}2. 卸载 Sing-box 服务端${NC}"
-    echo -e "${GREEN}3. 更新 Sing-box 服务端 (保留配置)${NC}"
-    echo -e "${GREEN}4. 查看当前配置信息${NC}"
-    echo -e "${RED}0. 退出${NC}"
-    echo -e "${BLUE}----------------------------------------------------${NC}"
-    echo "" # 添加一个空行，让输入更清晰
-    # 强制 read 命令从 /dev/tty (终端) 读取输入，即使脚本通过管道运行
-    read -r -p "请选择操作 (0-4): " action_choice </dev/tty
+    local max_protocol_choice=9
+    if [ "$is_latest_beta_kernel" = true ]; then
+        echo "10. anytls"
+        max_protocol_choice=10
+    fi
 
-    case ${action_choice} in
-        1) install_server;;
-        2) uninstall_server;;
-        3) update_server;;
-        4) show_config;;
-        0) echo -e "${YELLOW}退出脚本。${NC}"; exit 0;;
+    local protocol_choice
+    read -p "请输入你的选择 [1-${max_protocol_choice}]:" protocol_choice
+
+    case "$protocol_choice" in
+        1) protocol="vless" ;;
+        2) protocol="tuic" ;;
+        3) protocol="hysteria2" ;;
+        4) protocol="wireguard" ;;
+        5) protocol="ss" ;;
+        6) protocol="trojan" ;;
+        7) protocol="naive" ;;
+        8) protocol="ssh" ;;
+        9) protocol="shadowsocks-plugin" ;;
+        10)
+            if [ "$is_latest_beta_kernel" = true ]; then
+                protocol="anytls"
+            else
+                echo -e "${red}无效的选择，你当前选择的内核版本不支持 anytls 协议。${plain}"
+                exit 1
+            fi
+            ;;
         *)
-            echo -e "${RED}无效的选择 '${action_choice}'，请输入 0 到 4 之间的数字。${NC}"
-            sleep 1
-            main_menu
+            echo -e "${red}无效的选择，请重新输入。${plain}"
+            exit 1
             ;;
     esac
+
+    echo -e "${yellow}你选择的协议是：${protocol}${plain}"
+
+    # Generate configuration based on the chosen protocol
+    generate_config "$protocol"
 }
 
-# 函数：安装服务端
-install_server() {
-    install_dependencies
+function generate_config() {
+    local protocol=$1
+    local port=$(shuf -i 10000-65535 -n 1) # Random port
+    local uuid=$(uuidgen) # Generate UUID
 
-    echo -e "${BLUE}--------------------------------------------------------${NC}"
-    echo -e "请选择要部署的协议："
-    echo -e "1. Vmess (TLS)"
-    echo -e "2. Vless (TLS)"
-    echo -e "3. Trojan (TLS)"
-    echo -e "4. AnyTLS (Reality - 推荐，无需域名和证书)"
-    echo -e "5. Hysteria2"
-    echo -e "${BLUE}--------------------------------------------------------${NC}"
-    echo "" # 添加一个空行
-    read -r -p "请输入数字选择协议（1-5）：" protocol_choice </dev/tty
+    cat > /etc/sing-box/config.json <<EOF
+{
+  "log": {
+    "disabled": false,
+    "level": "info",
+    "timestamp": true
+  },
+  "inbounds": [
+    {
+      "type": "$protocol",
+      "listen": "::",
+      "listen_port": $port,
+      "sniff": true
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct"
+    },
+    {
+      "type": "block"
+    }
+  ]
+}
+EOF
 
-    case ${protocol_choice} in
-        1) PROTOCOL_NAME="vmess";;
-        2) PROTOCOL_NAME="vless";;
-        3) PROTOCOL_NAME="trojan";;
-        4) PROTOCOL_NAME="anytls_reality_vless";; # 内部使用 AnyTLS (Reality) 组合 VLESS
-        5) PROTOCOL_NAME="hysteria2";;
-        *) echo -e "${RED}无效的选择，请重新运行脚本。${NC}"; exit 1;;
-    esac
-
-    UUID=$(generate_uuid)
-    PASSWORD=$(generate_password)
-
-    if [[ "${PROTOCOL_NAME}" != "anytls_reality_vless" && "${PROTOCOL_NAME}" != "hysteria2" ]]; then
-        echo "" # 添加一个空行
-        read -r -p "请输入你的域名 (例如: example.com): " DOMAIN </dev/tty
-        if [[ -z "$DOMAIN" ]]; then
-            echo -e "${RED}域名不能为空，请重新运行脚本。${NC}"
-            exit 1
-        fi
-        echo "" # 添加一个空行
-        read -r -p "请输入你的邮箱地址 (用于 Let's Encrypt 证书，例如: your@email.com): " EMAIL </dev/tty
-        if [[ -z "$EMAIL" ]]; then
-            echo -e "${RED}邮箱地址不能为空，请重新运行脚本。${NC}"
-            exit 1
-        fi
-        setup_ssl # 为需要 TLS 的协议设置 SSL
+    echo -e "${green}配置文件 /etc/sing-box/config.json 已生成！${plain}"
+    echo -e "${yellow}请注意，此为基础配置，你可能需要根据实际需求进行更详细的配置。${plain}"
+    echo -e "${yellow}sing-box 服务已启动，或尝试使用 'systemctl start sing-box' 启动。${plain}"
+    echo -e "${green}以下是你的配置信息概要：${plain}"
+    echo -e "协议: ${protocol}"
+    echo -e "端口: ${port}"
+    if [[ "$protocol" == "vless" ]]; then
+        echo -e "UUID: ${uuid}"
     fi
-
-    if [[ "${PROTOCOL_NAME}" == "anytls_reality_vless" ]]; then
-        # Reality 伪装目标地址已固定为 REALITY_DEST 变量，用户无需手动输入
-        PORT=443 # AnyTLS (Reality) 默认使用 443 端口
-
-        # 生成 Reality 密钥对
-        REALITY_KEY_PAIR=$(sing-box generate reality-key)
-        REALITY_PRIVATE_KEY=$(echo "${REALITY_KEY_PAIR}" | grep 'private_key' | awk -F': ' '{print $2}' | tr -d '"')
-        REALITY_PUBLIC_KEY=$(echo "${REALITY_KEY_PAIR}" | grep 'public_key' | awk -F': ' '{print $2}' | tr -d '"')
-        REALITY_SHORT_ID=$(head /dev/urandom | tr -dc A-F0-9 | head -c 8) # 自动生成短 ID
-
-        echo -e "${GREEN}生成的 Reality 短 ID: ${YELLOW}${REALITY_SHORT_ID}${NC}"
-        echo -e "${GREEN}生成的 Reality 私钥: ${YELLOW}${REALITY_PRIVATE_KEY}${NC}"
-        echo -e "${GREEN}生成的 Reality 公钥: ${YELLOW}${REALITY_PUBLIC_KEY}${NC}"
-        echo -e "${YELLOW}请务必记录以上信息，客户端配置需要用到 Reality 公钥和短 ID！${NC}"
-        echo -e "${YELLOW}Reality 伪装目标已固定为：${REALITY_DEST}${NC}"
-
-    elif [[ "${PROTOCOL_NAME}" == "hysteria2" ]]; then
-        echo "" # 添加一个空行
-        read -r -p "请输入 Hysteria2 监听端口 (默认: ${DEFAULT_HYSTERIA2_PORT}): " input_port </dev/tty
-        PORT=${input_port:-${DEFAULT_HYSTERIA2_PORT}}
-        echo -e "${YELLOW}Hysteria2 协议需要你手动生成或提供 SSL 证书。请确保 /etc/sing-box/fullchain.pem 和 /etc/sing-box/privkey.pem 存在。${NC}"
-        echo -e "${YELLOW}如果没有，请手动准备证书文件。${NC}"
-        # 对于 Hysteria2，这里不自动申请证书，需要用户手动放置或自行处理
-    else
-        # 其他 TLS 协议的端口选择
-        echo "" # 添加一个空行
-        read -r -p "请输入 TLS 监听端口 (默认: ${DEFAULT_TLS_PORT}): " input_port </dev/tty
-        PORT=${input_port:-${DEFAULT_TLS_PORT}}
-    fi
-
-    echo -e "${BLUE}--------------------------------------------------------${NC}"
-    echo -e "请选择 Sing-box 客户端版本："
-    echo -e "1. 最新稳定版 (强烈推荐，${GREEN}支持 AnyTLS/Reality${NC} 等新协议)"
-    echo -e "2. 特定版本 (如果你需要旧版本，可能不支持 AnyTLS/Reality)"
-    echo -e "${BLUE}--------------------------------------------------------${NC}"
-    echo "" # 添加一个空行
-    read -r -p "请输入数字选择版本（1-2）：" version_choice </dev/tty
-
-    SINGBOX_VERSION="latest"
-    if [[ "${version_choice}" == "2" ]]; then
-        echo "" # 添加一个空行
-        read -r -p "请输入要安装的 Sing-box 版本号 (例如: 1.8.0): " custom_version </dev/tty
-        if [[ -n "$custom_version" ]]; then
-            SINGBOX_VERSION="$custom_version"
-        else
-            echo -e "${RED}未输入特定版本号，将安装最新稳定版。${NC}"
-        fi
-    fi
-
-    install_singbox "$SINGBOX_VERSION"
-
-    echo -e "${GREEN}正在生成 Sing-box 配置文件...${NC}"
-    mkdir -p /etc/sing-box
-    mkdir -p /var/log/sing-box # 确保日志目录存在
-
-    if [[ "${PROTOCOL_NAME}" == "anytls_reality_vless" ]]; then
-        cat > /etc/sing-box/config.json << EOF
-{
-  "log": {
-    "disabled": false,
-    "level": "info",
-    "output": "/var/log/sing-box/sing-box.log",
-    "timestamp": true
-  },
-  "inbounds": [
-    {
-      "type": "reality",
-      "tag": "anytls-reality-vless-in",
-      "listen": "0.0.0.0",
-      "listen_port": ${PORT},
-      "sniff": true,
-      "sniff_override_destination": true,
-      "users": [
-        {
-          "uuid": "${UUID}",
-          "flow": "xtls-rprx-vision"
-        }
-      ],
-      "tls": {
-        "enabled": true,
-        "server_name": "${REALITY_DEST%:*}", # 这是 Sing-box 要求 Reality 在 TLS 握手中使用的 SNI
-        "reality": {
-          "enabled": true,
-          "handshake": {
-            "server": "${REALITY_DEST%:*}", # Reality 伪装目标地址 (Host)
-            "server_port": ${REALITY_DEST##*:}, # Reality 伪装目标端口
-            "sni": "${REALITY_DEST%:*}", # Reality 握手期间使用的 SNI，通常与 server 相同
-            "fingerprint": "chrome"
-          },
-          "private_key": "${REALITY_PRIVATE_KEY}",
-          "short_id": [
-            "${REALITY_SHORT_ID}"
-          ]
-        }
-      }
-    }
-  ],
-  "outbounds": [
-    {
-      "type": "direct",
-      "tag": "direct"
-    },
-    {
-      "type": "block",
-      "tag": "block"
-    }
-  ]
-}
-EOF
-        echo -e "${GREEN}Sing-box 配置已生成，服务已启动。${NC}"
-        systemctl enable sing-box
-        systemctl restart sing-box
-
-        echo -e "${BLUE}--------------------------------------------------------${NC}"
-        echo -e "${GREEN}AnyTLS (Reality + VLESS) 客户端配置信息：${NC}"
-        echo -e "服务器地址: ${YELLOW}你的VPS_IP${NC}"
-        echo -e "端口: ${YELLOW}${PORT}${NC}"
-        echo -e "UUID: ${YELLOW}${UUID}${NC}"
-        echo -e "传输协议: ${YELLOW}Reality + VLESS${NC}"
-        echo -e "伪装目标 (Server Name): ${YELLOW}${REALITY_DEST%:*} ${NC}" # 客户端配置也需要这个伪装目标
-        echo -e "伪装目标端口 (Server Port): ${YELLOW}${REALITY_DEST##*:}${NC}" # 客户端配置也需要这个伪装目标端口
-        echo -e "公钥 (Public Key): ${YELLOW}${REALITY_PUBLIC_KEY}${NC}"
-        echo -e "短 ID (Short ID): ${YELLOW}${REALITY_SHORT_ID}${NC}"
-        echo -e "流控 (Flow): ${YELLOW}xtls-rprx-vision${NC}"
-        echo -e "指纹 (uTLS Fingerprint): ${YELLOW}chrome${NC}"
-        echo -e "${BLUE}--------------------------------------------------------${NC}"
-
-    elif [[ "${PROTOCOL_NAME}" == "vmess" ]]; then
-        cat > /etc/sing-box/config.json << EOF
-{
-  "log": {
-    "disabled": false,
-    "level": "info",
-    "output": "/var/log/sing-box/sing-box.log",
-    "timestamp": true
-  },
-  "inbounds": [
-    {
-      "type": "vmess",
-      "tag": "vmess-in",
-      "listen": "0.0.0.0",
-      "listen_port": ${PORT},
-      "sniff": true,
-      "sniff_override_destination": true,
-      "users": [
-        {
-          "uuid": "${UUID}"
-        }
-      ],
-      "tls": {
-        "enabled": true,
-        "server_name": "${DOMAIN}",
-        "certificate_path": "/etc/sing-box/fullchain.pem",
-        "key_path": "/etc/sing-box/privkey.pem",
-        "strict_sni": true
-      }
-    }
-  ],
-  "outbounds": [
-    {
-      "type": "direct",
-      "tag": "direct"
-    },
-    {
-      "type": "block",
-      "tag": "block"
-    }
-  ]
-}
-EOF
-        echo -e "${GREEN}Sing-box 配置已生成，服务已启动。${NC}"
-        systemctl enable sing-box
-        systemctl restart sing-box
-
-        echo -e "${BLUE}--------------------------------------------------------${NC}"
-        echo -e "${GREEN}VMess (TLS) 客户端配置信息：${NC}"
-        echo -e "服务器地址: ${YELLOW}${DOMAIN}${NC}"
-        echo -e "端口: ${YELLOW}${PORT}${NC}"
-        echo -e "UUID: ${YELLOW}${UUID}${NC}"
-        echo -e "传输协议: ${YELLOW}TLS${NC}"
-        echo -e "额外提示: ${YELLOW}客户端启用 uTLS 指纹伪装（例如：chrome）可以增强隐蔽性。${NC}"
-        echo -e "${BLUE}--------------------------------------------------------${NC}"
-
-    elif [[ "${PROTOCOL_NAME}" == "vless" ]]; then
-        cat > /etc/sing-box/config.json << EOF
-{
-  "log": {
-    "disabled": false,
-    "level": "info",
-    "output": "/var/log/sing-box/sing-box.log",
-    "timestamp": true
-  },
-  "inbounds": [
-    {
-      "type": "vless",
-      "tag": "vless-in",
-      "listen": "0.0.0.0",
-      "listen_port": ${PORT},
-      "sniff": true,
-      "sniff_override_destination": true,
-      "users": [
-        {
-          "uuid": "${UUID}",
-          "flow": "xtls-rprx-vision"
-        }
-      ],
-      "tls": {
-        "enabled": true,
-        "server_name": "${DOMAIN}",
-        "certificate_path": "/etc/sing-box/fullchain.pem",
-        "key_path": "/etc/sing-box/privkey.pem",
-        "strict_sni": true
-      }
-    }
-  ],
-  "outbounds": [
-    {
-      "type": "direct",
-      "tag": "direct"
-    },
-    {
-      "type": "block",
-      "tag": "block"
-    }
-  ]
-}
-EOF
-        echo -e "${GREEN}Sing-box 配置已生成，服务已启动。${NC}"
-        systemctl enable sing-box
-        systemctl restart sing-box
-
-        echo -e "${BLUE}--------------------------------------------------------${NC}"
-        echo -e "${GREEN}VLESS (TLS) 客户端配置信息：${NC}"
-        echo -e "服务器地址: ${YELLOW}${DOMAIN}${NC}"
-        echo -e "端口: ${YELLOW}${PORT}${NC}"
-        echo -e "UUID: ${YELLOW}${UUID}${NC}"
-        echo -e "传输协议: ${YELLOW}TLS${NC}"
-        echo -e "流控: ${YELLOW}xtls-rprx-vision${NC}"
-        echo -e "额外提示: ${YELLOW}客户端启用 uTLS 指纹伪装（例如：chrome）可以增强隐蔽性。${NC}"
-        echo -e "${BLUE}--------------------------------------------------------${NC}"
-
-    elif [[ "${PROTOCOL_NAME}" == "trojan" ]]; then
-        cat > /etc/sing-box/config.json << EOF
-{
-  "log": {
-    "disabled": false,
-    "level": "info",
-    "output": "/var/log/sing-box/sing-box.log",
-    "timestamp": true
-  },
-  "inbounds": [
-    {
-      "type": "trojan",
-      "tag": "trojan-in",
-      "listen": "0.0.0.0",
-      "listen_port": ${PORT},
-      "sniff": true,
-      "sniff_override_destination": true,
-      "users": [
-        {
-          "password": "${PASSWORD}"
-        }
-      ],
-      "tls": {
-        "enabled": true,
-        "server_name": "${DOMAIN}",
-        "certificate_path": "/etc/sing-box/fullchain.pem",
-        "key_path": "/etc/sing-box/privkey.pem",
-        "strict_sni": true
-      }
-    }
-  ],
-  "outbounds": [
-    {
-      "type": "direct",
-      "tag": "direct"
-    },
-    {
-      "type": "block",
-      "tag": "block"
-    }
-  ]
-}
-EOF
-        echo -e "${GREEN}Sing-box 配置已生成，服务已启动。${NC}"
-        systemctl enable sing-box
-        systemctl restart sing-box
-
-        echo -e "${BLUE}--------------------------------------------------------${NC}"
-        echo -e "${GREEN}Trojan (TLS) 客户端配置信息：${NC}"
-        echo -e "服务器地址: ${YELLOW}${DOMAIN}${NC}"
-        echo -e "端口: ${YELLOW}${PORT}${NC}"
-        echo -e "密码: ${YELLOW}${PASSWORD}${NC}"
-        echo -e "传输协议: ${YELLOW}TLS${NC}"
-        echo -e "额外提示: ${YELLOW}客户端启用 uTLS 指纹伪装（例如：chrome）可以增强隐蔽性。${NC}"
-        echo -e "${BLUE}--------------------------------------------------------${NC}"
-
-    elif [[ "${PROTOCOL_NAME}" == "hysteria2" ]]; then
-        cat > /etc/sing-box/config.json << EOF
-{
-  "log": {
-    "disabled": false,
-    "level": "info",
-    "output": "/var/log/sing-box/sing-box.log",
-    "timestamp": true
-  },
-  "inbounds": [
-    {
-      "type": "hysteria2",
-      "tag": "hysteria2-in",
-      "listen": "0.0.0.0",
-      "listen_port": ${PORT},
-      "users": [
-        {
-          "password": "${PASSWORD}"
-        }
-      ],
-      "tls": {
-        "enabled": true,
-        "certificate_path": "/etc/sing-box/fullchain.pem",
-        "key_path": "/etc/sing-box/privkey.pem"
-      }
-    }
-  ],
-  "outbounds": [
-    {
-      "type": "direct",
-      "tag": "direct"
-    },
-    {
-      "type": "block",
-      "tag": "block"
-    }
-  ]
-}
-EOF
-        echo -e "${GREEN}Sing-box 配置已生成，服务已启动。${NC}"
-        systemctl enable sing-box
-        systemctl restart sing-box
-
-        echo -e "${BLUE}--------------------------------------------------------${NC}"
-        echo -e "${GREEN}Hysteria2 客户端配置信息：${NC}"
-        echo -e "服务器地址: ${YELLOW}你的VPS_IP${NC}" # Hysteria2 可以直接用 IP
-        echo -e "端口: ${YELLOW}${PORT}${NC}"
-        echo -e "密码: ${YELLOW}${PASSWORD}${NC}"
-        echo -e "传输协议: ${YELLOW}TLS (Hysteria2)${NC}"
-        echo -e "${BLUE}--------------------------------------------------------${NC}"
-    fi
-
-    echo -e "${GREEN}Sing-box 服务端安装完成！${NC}"
-    echo -e "${YELLOW}请确保你的 VPS 防火墙和云服务商安全组已开放相关端口。${NC}"
-    read -p "按任意键返回主菜单..." </dev/tty
-    main_menu
+    echo -e "配置文件路径: /etc/sing-box/config.json"
 }
 
-# 函数：卸载服务端
-uninstall_server() {
-    echo -e "${YELLOW}正在停止并卸载 Sing-box 服务...${NC}"
+function uninstall_singbox() {
+    echo -e "${red}开始卸载 sing-box...${plain}"
     systemctl stop sing-box
     systemctl disable sing-box
     rm -f /etc/systemd/system/sing-box.service
-    rm -rf /etc/sing-box
     rm -f /usr/local/bin/sing-box
-    rm -rf /var/log/sing-box
+    rm -rf /etc/sing-box
     systemctl daemon-reload
-    systemctl reset-failed
-
-    echo -e "${GREEN}Sing-box 已完全卸载。${NC}"
-    read -p "按任意键返回主菜单..." </dev/tty
-    main_menu
+    echo -e "${green}sing-box 已成功卸载！${plain}"
 }
 
-# 函数：更新服务端
-update_server() {
-    echo -e "${YELLOW}正在更新 Sing-box 服务...${NC}"
-    install_singbox "latest" # 更新到最新版本
-    systemctl restart sing-box
-    echo -e "${GREEN}Sing-box 服务已更新并重启。${NC}"
-    read -p "按任意键返回主菜单..." </dev/tty
-    main_menu
-}
-
-# 函数：显示当前配置
-show_config() {
-    echo -e "${BLUE}--------------------------------------------------------${NC}"
-    echo -e "${GREEN}Sing-box 服务当前状态：${NC}"
-    systemctl status sing-box --no-pager || echo -e "${YELLOW}Sing-box 服务未运行或未安装。${NC}"
-    echo -e "${BLUE}--------------------------------------------------------${NC}"
-
-    if [ -f "/etc/sing-box/config.json" ]; then
-        echo -e "${GREEN}当前 Sing-box 配置：${NC}"
-        # 尝试使用 jq 美化输出，如果 jq 不存在，则直接 cat
-        jq . /etc/sing-box/config.json 2>/dev/null || cat /etc/sing-box/config.json
-        echo -e "${BLUE}--------------------------------------------------------${NC}"
-        echo -e "${YELLOW}请注意：这里只显示服务端配置，客户端配置信息请参考安装时的输出。${NC}"
+function start_singbox() {
+    echo -e "${green}正在启动 sing-box...${plain}"
+    systemctl start sing-box
+    if [ $? -eq 0 ]; then
+        echo -e "${green}sing-box 启动成功！${plain}"
     else
-        echo -e "${YELLOW}未找到 Sing-box 配置文件 /etc/sing-box/config.json。${NC}"
+        echo -e "${red}sing-box 启动失败，请检查日志！${plain}"
     fi
-    echo -e "${BLUE}--------------------------------------------------------${NC}"
-    read -p "按任意键返回主菜单..." </dev/tty
-    main_menu
 }
 
-# 脚本入口
-main_menu
+function stop_singbox() {
+    echo -e "${yellow}正在停止 sing-box...${plain}"
+    systemctl stop sing-box
+    if [ $? -eq 0 ]; then
+        echo -e "${green}sing-box 已停止。${plain}"
+    else
+        echo -e "${red}sing-box 停止失败，请检查日志！${plain}"
+    fi
+}
+
+function restart_singbox() {
+    echo -e "${green}正在重启 sing-box...${plain}"
+    systemctl restart sing-box
+    if [ $? -eq 0 ]; then
+        echo -e "${green}sing-box 重启成功！${plain}"
+    else
+        echo -e "${red}sing-box 重启失败，请检查日志！${plain}"
+    fi
+}
+
+function show_status() {
+    echo -e "${green}sing-box 状态：${plain}"
+    systemctl status sing-box
+}
+
+function show_menu() {
+    check_root
+    check_operating_system
+    
+    echo -e "${green}sing-box 脚本 ${plain}"
+    echo -e "${green}--------------------${plain}"
+    echo -e "1. 安装 sing-box"
+    echo -e "2. 卸载 sing-box"
+    echo -e "3. 启动 sing-box"
+    echo -e "4. 停止 sing-box"
+    echo -e "5. 重启 sing-box"
+    echo -e "6. 查看 sing-box 状态"
+    echo -e "0. 退出"
+    echo -e "${green}--------------------${plain}"
+
+    local choice
+    read -p "请输入你的选择 [0-6]:" choice
+    case "$choice" in
+        1) install_singbox ;;
+        2) uninstall_singbox ;;
+        3) start_singbox ;;
+        4) stop_singbox ;;
+        5) restart_singbox ;;
+        6) show_status ;;
+        0) exit 0 ;;
+        *) echo -e "${red}无效的选择，请重新输入！${plain}" ;;
+    esac
+}
+
+# Main
+show_menu
