@@ -136,7 +136,8 @@ main_menu() {
     echo -e "${RED}0. 退出${NC}"
     echo -e "${BLUE}----------------------------------------------------${NC}"
     echo "" # 添加一个空行，让输入更清晰
-    read -r -p "请选择操作 (0-4): " action_choice
+    # 强制 read 命令从 /dev/tty (终端) 读取输入，即使脚本通过管道运行
+    read -r -p "请选择操作 (0-4): " action_choice </dev/tty
 
     case ${action_choice} in
         1) install_server;;
