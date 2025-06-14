@@ -30,7 +30,7 @@ DEFAULT_VLESS_PORT=10002
 DEFAULT_TROJAN_PORT=10003
 DEFAULT_HYSTERIA2_PORT=10004
 # Reality 伪装目标地址：固定为常用、稳定的 Google 站点
-REALITY_DEST="www.google.com:443"
+REALITY_DEST="en.people.cn:443"
 
 # 函数：检查命令是否存在
 command_exists() {
