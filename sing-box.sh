@@ -61,11 +61,11 @@ generate_uuid() {
 install_singbox() {
     local version_to_install="$1"
     echo -e "${GREEN}正在下载并安装 Sing-box (版本: ${version_to_install})...${NC}"
-    # 更新 Sing-box 官方安装脚本的 URL
+    # 更新为 Sing-box 官方推荐的通用安装脚本 URL
     if [[ -z "$version_to_install" || "$version_to_install" == "latest" ]]; then
-        bash <(curl -sL https://raw.githubusercontent.com/SagerNet/sing-box/main/install.sh)
+        bash <(curl -sL https://sing-box.app/install.sh)
     else
-        bash <(curl -sL https://raw.githubusercontent.com/SagerNet/sing-box/main/install.sh) -v "$version_to_install"
+        bash <(curl -sL https://sing-box.app/install.sh) -s -- --version "$version_to_install"
     fi
 
     if [ $? -ne 0 ]; then
