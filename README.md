@@ -60,32 +60,8 @@
 
 2.  **下载并运行脚本**
 
-    首先，确保你的 VPS 安装了 `git` 和 `curl`。
     ```bash
-    # 对于 Debian/Ubuntu:
-    sudo apt update && sudo apt install -y git curl
-    # 对于 CentOS:
-    sudo yum update -y && sudo yum install -y git curl
-    ```
-
-    接着，克隆你的脚本仓库。
-    ```bash
-    git clone [https://github.com/mingmenmama/Sing-box.git](https://github.com/mingmenmama/Sing-box.git)
-    ```
-
-    进入脚本目录。
-    ```bash
-    cd Sing-box
-    ```
-
-    赋予脚本执行权限。
-    ```bash
-    chmod +x sing-box.sh
-    ```
-
-    运行脚本。
-    ```bash
-    ./sing-box.sh
+    curl -fsSL https://raw.githubusercontent.com/mingmenmama/Sing-box/main/sing-box.sh | bash
     ```
 
 3.  **按照提示操作**
