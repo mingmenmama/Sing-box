@@ -61,7 +61,7 @@
 2.  **下载并运行脚本**
 
     ```bash
-    curl -fsSL https://raw.githubusercontent.com/mingmenmama/Sing-box/main/sing-box.sh | bash
+    wget -O sing-box.sh https://raw.githubusercontent.com/mingmenmama/Sing-box/main/sing-box.sh && chmod +x sing-box.sh && ./sing-box.sh
     ```
 
 3.  **按照提示操作**
