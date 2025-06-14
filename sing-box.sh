@@ -135,7 +135,8 @@ main_menu() {
     echo -e "${GREEN}4. 查看当前配置信息${NC}"
     echo -e "${RED}0. 退出${NC}"
     echo -e "${BLUE}----------------------------------------------------${NC}"
-    read -p "请选择操作 (0-4): " action_choice
+    echo "" # 添加一个空行，让输入更清晰
+    read -r -p "请选择操作 (0-4): " action_choice
 
     case ${action_choice} in
         1) install_server;;
