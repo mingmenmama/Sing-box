@@ -1,4 +1,5 @@
-# Sing-box 一键多协议共存脚本 (AnyTLS/Reality 集成版)
+# ***未完成***
+Sing-box 一键多协议共存脚本 (AnyTLS/Reality 集成版)
 
 本项目是基于 [yonggekkk/sing-box-yg](https://github.com/yonggekkk/sing-box-yg) 修改而来，根据 Sing-box 官方文档，集成了 **AnyTLS (Reality)** 作为一种高度伪装的独立协议选项，并优化了其他协议的提示信息。
 
