@@ -47,13 +47,13 @@ SuperNova Sing-box 是一个一键式部署脚本，用于快速搭建基于 [si
 ### 一键安装
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/10000ge10000/Sing-box/main/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/mingmenmama/Sing-box/main/install.sh)
 ```
 
 或者下载后安装：
 
 ```bash
-git clone https://github.com/10000ge10000/Sing-box.git
+git clone https://github.com/mingmenmama/Sing-box.git
 cd Sing-box
 chmod +x supernova.sh
 ./supernova.sh --install
@@ -182,5 +182,5 @@ chmod +x supernova.sh
 
 如有任何问题或建议，欢迎提 Issue 或通过以下方式联系：
 
-- GitHub Issues: [提交问题](https://github.com/10000ge10000/Sing-box/issues)
-- Discussions: [讨论区](https://github.com/10000ge10000/Sing-box/discussions)
+- GitHub Issues: [提交问题](https://github.com/mingmenmama/Sing-box/issues)
+- Discussions: [讨论区](https://github.com/mingmenmama/Sing-box/discussions)
