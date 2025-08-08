@@ -1,151 +1,186 @@
-# ***未完成***
-Sing-box 一键多协议共存脚本 (AnyTLS/Reality 集成版)
+# 🚀 SuperNova Sing-box
 
-本项目是基于 [yonggekkk/sing-box-yg](https://github.com/yonggekkk/sing-box-yg) 修改而来，根据 Sing-box 官方文档，集成了 **AnyTLS (Reality)** 作为一种高度伪装的独立协议选项，并优化了其他协议的提示信息。
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Last Updated](https://img.shields.io/badge/last%20updated-2025--08--08-brightgreen)
 
-本脚本旨在帮助用户快速部署 Sing-box 服务端，支持 Vmess、Vless、Trojan、**AnyTLS (Reality)** 和 Hysteria2 等多种协议。
+> 一键部署多协议 Sing-box 服务，支持 AnyTLS/Reality 深度伪装
+
+## 📑 目录
+
+- [项目简介](#-项目简介)
+- [特性功能](#-特性功能)
+- [快速开始](#-快速开始)
+- [支持的协议](#-支持的协议)
+- [分流功能](#-分流功能)
+- [高级配置](#-高级配置)
+- [常见问题](#-常见问题)
+- [贡献指南](#-贡献指南)
+- [许可协议](#-许可协议)
+
+## 🌟 项目简介
+
+SuperNova Sing-box 是一个一键式部署脚本，用于快速搭建基于 [sing-box](https://github.com/SagerNet/sing-box) 的代理服务。本项目整合了多种代理协议，支持 AnyTLS/Reality 深度伪装技术，提供智能分流、多用户管理、自动证书申请等高级功能，让您的网络连接更安全、更高效。
+
+## ✨ 特性功能
+
+- **多协议支持**：支持 Vmess、Vless、Trojan、Hysteria2 等多种协议
+- **AnyTLS/Reality 深度伪装**：无需域名和证书，使用与真实网站的 TLS 握手进行伪装
+- **智能分流系统**：自动适配最新版本的分流方式（geosite/geoip 或 .srs）
+- **自动证书管理**：支持 Let's Encrypt 自动申请和续期
+- **多用户管理**：支持多用户配置和权限管理
+- **性能监控**：内建流量统计和系统资源监控
+- **一键安装/更新**：全自动安装和更新流程
+- **备份与恢复**：支持配置备份和恢复功能
+- **智能优化**：自动优化系统网络参数
+- **TUI 界面**：用户友好的交互式配置界面
+
+## 🚀 快速开始
+
+### 系统要求
+
+- Debian 9+ / Ubuntu 18.04+ / CentOS 7+
+- 架构支持：x86_64 / ARM64 / ARMv7
+- 至少 512MB 内存
+- 至少 10GB 可用磁盘空间
+
+### 一键安装
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/10000ge10000/Sing-box/main/install.sh)
+```
+
+或者下载后安装：
+
+```bash
+git clone https://github.com/10000ge10000/Sing-box.git
+cd Sing-box
+chmod +x supernova.sh
+./supernova.sh --install
+```
+
+### 命令行参数
+
+```
+用法: ./supernova.sh [选项]
+
+选项:
+  -h, --help           显示帮助信息
+  -i, --install        安装 Sing-box
+  -u, --update         更新 Sing-box
+  -v, --version VER    指定安装版本
+  --reset              重置配置
+  --logs               查看日志
+  --status             查看状态
+  --start              启动服务
+  --stop               停止服务
+  --restart            重启服务
+  --config             编辑配置
+  --wizard             配置向导
+  --bench              性能测试
+```
+
+## 📦 支持的协议
+
+- **Vmess**：基本的代理协议，支持 TLS 加密
+- **Vless**：类似于 Vmess 但有更低的开销
+- **Trojan**：强调安全性的代理协议
+- **Hysteria2**：基于 QUIC 的高速协议
+- **Shadowsocks**：经典加密代理协议
+- **SOCKS5**：标准 SOCKS5 代理
+- **Mixed**：多协议统一入口
+
+## 🔄 分流功能
+
+本项目提供多种分流模式：
+
+1. **基础分流**：简单的国内外分流
+2. **增强分流**：包含广告拦截、隐私保护
+3. **全局代理**：除私有地址外全部走代理
+4. **全局直连**：仅特定网站走代理
+5. **自定义规则**：支持高级自定义分流配置
+
+根据 Sing-box 版本自动选择最合适的分流方式：
+- 1.12.0 及以上版本：使用 .srs 规则集（更高效）
+- 1.10.x 及以下版本：使用 geosite/geoip 数据库
+
+## ⚙️ 高级配置
+
+### 性能优化
+
+```bash
+# 系统网络参数优化
+./supernova.sh --wizard
+# 选择 "性能优化" -> "优化系统网络参数"
+```
+
+### 多用户管理
+
+```bash
+./supernova.sh --wizard
+# 选择 "用户凭证管理" -> "添加新用户"
+```
+
+### 证书管理
+
+```bash
+./supernova.sh --wizard
+# 选择 "证书管理" -> "申请新证书"
+```
+
+## ❓ 常见问题
+
+### 1. 如何更改分流方式？
+
+通过配置向导可以更改分流方式：
+```bash
+./supernova.sh --wizard
+# 选择 "智能分流设置"
+```
+
+### 2. 如何修复服务无法启动？
+
+检查日志找出问题原因：
+```bash
+./supernova.sh --logs
+```
+
+常见解决方法：
+- 端口冲突：修改配置中的端口
+- 配置错误：检查 JSON 格式是否有误
+- 权限问题：确保脚本以 root 权限运行
+
+### 3. 如何在最新版本中启用分流功能？
+
+脚本会自动识别 Sing-box 版本并配置适当的分流方式。如果您需要手动配置：
+
+```bash
+./supernova.sh --wizard
+# 选择 "智能分流设置" -> 选择您想要的分流模式
+```
+
+## 🤝 贡献指南
+
+欢迎提交 Pull Requests 或 Issues 来帮助改进此项目！
+
+1. Fork 本仓库
+2. 创建您的特性分支 (`git checkout -b feature/amazing-feature`)
+3. 提交您的更改 (`git commit -m 'Add some amazing feature'`)
+4. 推送到分支 (`git push origin feature/amazing-feature`)
+5. 开启一个 Pull Request
+
+## 📜 许可协议
+
+本项目采用 MIT 许可协议 - 详见 [LICENSE](LICENSE) 文件。
 
 ---
 
-## 目录
+**免责声明**：本项目仅供学习和研究网络技术使用，用户需自行遵守当地法律法规。
+```
 
--   [特性](#特性)
--   [支持的系统](#支持的系统)
--   [使用教程](#使用教程)
-    -   [准备工作](#准备工作)
-    -   [安装步骤](#安装步骤)
-    -   [更新和卸载](#更新和卸载)
--   [AnyTLS (Reality) 协议说明](#anytls-reality-协议说明)
--   [其他协议的 TLS 伪装提示](#其他协议的-tls-伪装提示)
--   [注意事项](#注意事项)
--   [鸣谢](#鸣谢)
+## 感谢使用
 
----
+如有任何问题或建议，欢迎提 Issue 或通过以下方式联系：
 
-## 特性
-
-* **一键部署**：简化 Sing-box 服务端部署流程。
-* **多协议支持**：Vmess、Vless、Trojan、**AnyTLS (Reality)**、Hysteria2。
-* **AnyTLS (Reality) 深度伪装**：利用 Sing-box 的 Reality 特性，提供更高级的流量伪装，**无需域名和证书**，隐蔽性极高。
-* **传统 TLS 加密**：对于 Vmess/Vless/Trojan，支持使用 Let's Encrypt 证书自动生成和续期，实现标准 TLS 加密。
-* **IPv4/IPv6 双栈支持**：适配不同网络环境。
-* **版本选择**：用户可选择安装最新稳定版或其他特定版本的 Sing-box。
-
----
-
-## 支持的系统
-
-* Debian 9+
-* Ubuntu 18.04+
-* CentOS 7+
-
----
-
-## 使用教程
-
-### 准备工作
-
-1.  **一台拥有公网 IP 的 VPS**：建议使用 KVM 架构。
-2.  **（仅适用于 Vmess/Vless/Trojan TLS）一个已解析到 VPS IP 的域名**：你需要将你的域名 A 记录或 AAAA 记录指向你的 VPS IP 地址。**如果仅使用 AnyTLS (Reality)，则不需要域名。**
-3.  **SSH 客户端**：如 PuTTY, Xshell, Termius 等。
-4.  **开放端口**：确保你的 VPS 防火墙（包括云服务商的安全组）开放你将要使用的协议端口（例如：**AnyTLS (Reality) 默认使用 443 端口**，以及你为其他协议设置的端口）。
-
-### 安装步骤
-
-1.  **登录 VPS**
-
-    ```bash
-    ssh root@你的VPS_IP地址
-    ```
-    （请将 `你的VPS_IP地址` 替换为你的实际 VPS IP）
-
-2.  **下载并运行脚本**
-
-    ```bash
-    wget -O sing-box.sh https://raw.githubusercontent.com/mingmenmama/Sing-box/main/sing-box.sh && chmod +x sing-box.sh && ./sing-box.sh
-    ```
-
-3.  **按照提示操作**
-
-    脚本运行后，会引导你完成以下配置：
-
-    * **选择部署协议**：选择你想要部署的协议，例如 `4` (**AnyTLS (Reality)**)。
-        * **注意：AnyTLS (Reality) 协议需要 Sing-box 最新稳定版或支持 Reality 的特定版本。**
-    * **输入域名**：如果你选择 Vmess/Vless/Trojan 并启用 TLS，需要输入域名。
-    * **（AnyTLS (Reality) 特有）输入 Reality 伪装目标**：例如 `www.google.com:443`。
-    * **选择端口**：为你的协议选择或输入监听端口。**AnyTLS (Reality) 默认使用 443 端口。**
-    * **选择 Sing-box 版本**：**强烈推荐选择“最新稳定版”**，以确保 AnyTLS (Reality) 等新协议的兼容性。
-    * **生成UUID/密码**：脚本会自动生成或让你输入。
-    * **安装 SSL 证书**：对于 Vmess/Vless/Trojan TLS，脚本会自动申请和配置 Let's Encrypt 证书。**AnyTLS (Reality) 无需证书。**
-
-    等待脚本执行完成。成功后，它将显示你的 Sing-box 客户端配置信息，包括链接、UUID、端口等。**对于 AnyTLS (Reality)，会额外显示生成的公钥、短 ID 和伪装目标等关键信息，请务必保存！**
-
-### 更新和卸载
-
-* **更新 Sing-box**：
-    重新运行脚本，选择更新选项即可。
-    ```bash
-    ./sing-box.sh
-    ```
-* **卸载 Sing-box**：
-    重新运行脚本，选择卸载选项即可。
-    ```bash
-    ./sing-box.sh
-    ```
-
----
-
-## AnyTLS (Reality) 协议说明
-
-**AnyTLS (Reality)** 是 Sing-box 中一种非常先进且强大的流量伪装机制。它并非一个独立的数据传输协议，而是作为 **VLESS 协议的一种高度隐蔽的传输方式**。它通过模仿真实的 TLS 握手流量来混淆特征，使其看起来像是正常的 HTTPS 访问。
-
-**工作原理简述**：
-当客户端尝试连接到服务端时，Reality 会伪装成正在与一个真实的、全球热门网站（你设定的伪装目标，例如 `www.google.com`）进行 TLS 握手。通过匹配特定的 **公钥 (Public Key)** 和 **短 ID (Short ID)**，Sing-box 服务端能够准确识别出真实的客户端连接，然后将数据流交给内部的 VLESS 协议进行传输。
-
-**主要优势**：
-* **无需域名和证书**：不同于传统的 TLS 协议需要你购买域名和申请 SSL 证书，Reality 可以直接利用现有热门网站的 TLS 证书进行伪装。
-* **高度伪装与隐蔽性**：流量伪装成访问真实网站的 HTTPS 流量，难以被防火墙识别和拦截，大大降低了被封锁的风险。
-* **优异性能**：结合 VLESS 协议和 `xtls-rprx-vision` 流控，可以提供非常好的传输性能。
-
-**重要提示：**
-* **版本兼容性**：AnyTLS (Reality) 协议需要 **Sing-box 1.2 或更高版本** 的支持。因此，**强烈建议在安装脚本时选择“最新稳定版”的 Sing-box 客户端**。
-* **客户端配置**：客户端也需要支持 Reality 协议，并配置与服务端完全匹配的 `Public Key`、`Short ID`、`伪装目标`、`流控 (Flow)` 以及 **uTLS 指纹 (Fingerprint)**。请务必核对所有参数。
-* **伪装目标选择**：选择一个访问量大、服务稳定且不易被墙的真实网站作为伪装目标（例如：`www.google.com:443`、`www.microsoft.com:443`、`cdn.jsdelivr.net:443` 等）。
-* **Reality 参数**：脚本会自动生成 `private_key` 和 `short_id`。请务必保存好这些信息，客户端配置需要用到 `public_key`（由私钥生成）和 `short_id`。
-
----
-
-## 其他协议的 TLS 伪装提示
-
-对于 Vmess、Vless 和 Trojan 协议，当它们启用 TLS 加密时，客户端可以通过配置 **uTLS 指纹 (uTLS Fingerprint)** 来进一步增强伪装效果。
-
-* **uTLS 指纹**：Sing-box 可以模拟不同主流浏览器（如 Chrome、Firefox、Safari 等）的 TLS 握手指纹，这有助于混淆流量，使其更难以被识别。
-* **客户端配置**：当你在客户端配置 Vmess、Vless 或 Trojan (TLS) 时，请务必在 TLS 设置中找到并启用 uTLS 指纹选项，并选择与服务端推荐（如果服务端有设置）或你希望伪装的浏览器类型（例如 `chrome`）。
-
----
-
-## 注意事项
-
-* **AnyTLS (Reality) 无需域名和证书，但仍需确保 443 端口已开放。**
-* **端口开放**：确保你的 VPS 防火墙和云服务商的安全组已开放所需端口。对于 AnyTLS (Reality)，默认是 443 端口。
-* **SELinux (CentOS)**：如果在 CentOS 上遇到问题，尝试禁用 SELinux：
-    ```bash
-    setenforce 0
-    sed -i 's/SELINUX=enforcing/SELINUX=disabled/g' /etc/selinux/config
-    ```
-* **Sing-box 配置**：脚本生成的 Sing-box 配置文件位于 `/etc/sing-box/config.json`。你可以根据需要手动修改此文件。
-* **日志文件**：Sing-box 的日志文件通常位于 `/var/log/sing-box/sing-box.log`。你可以通过查看日志文件来排查问题。
-* **服务管理**：
-    * 启动 Sing-box：`systemctl start sing-box`
-    * 停止 Sing-box：`systemctl stop sing-box`
-    * 重启 Sing-box：`systemctl restart sing-box`
-    * 查看状态：`systemctl status sing-box`
-    * 开机自启：`systemctl enable sing-box`
-
----
-
-## 鸣谢
-
-本项目基于 [yonggekkk/sing-box-yg](https://github.com/yonggekkk/sing-box-yg) 的优秀工作。
-
----
+- GitHub Issues: [提交问题](https://github.com/10000ge10000/Sing-box/issues)
+- Discussions: [讨论区](https://github.com/10000ge10000/Sing-box/discussions)
